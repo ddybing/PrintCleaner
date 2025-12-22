@@ -373,8 +373,17 @@ function Invoke-UninstallSoftware {
                          Write-Host "   [!] Error launching: $($_.Exception.Message)" -ForegroundColor Red
                     }
                     
-                    Write-Host "   (Press ENTER to continue to next app...)" -ForegroundColor DarkGray
-                    [void](Read-Host)
+                    Write-Host "   (Press ENTER to continue, or 'F' to Force Delete Registry Key...)" -ForegroundColor Yellow
+                    $uInput = Read-Host
+                    if ($uInput -match "^[Ff]$") {
+                        Write-Host "   [-] Removing Registry Key: $($app.RegPath)" -ForegroundColor Red
+                        try {
+                            Remove-Item -Path $app.RegPath -Recurse -Force -ErrorAction Stop
+                            Write-Host "       Registry entry removed." -ForegroundColor Green
+                        } catch {
+                            Write-Host "       [!] Failed to remove registry key: $($_.Exception.Message)" -ForegroundColor Red
+                        }
+                    }
                 }
                 Write-Progress -Activity "Uninstalling Software" -Completed
                 Write-Host "`nDone processing list." -ForegroundColor Green
@@ -436,8 +445,20 @@ function Invoke-UninstallSoftware {
             } catch {
                 Write-Host "Error launching uninstaller: $($_.Exception.Message)" -ForegroundColor Red
             }
-            Write-Host "Done." -ForegroundColor Green
-            Start-Sleep -Seconds 2
+
+            Write-Host "`nPress 'F' to Force Delete Registry Key, or any key to continue..." -ForegroundColor Yellow
+            $k = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+            if ($k.Character -match "[Ff]") {
+                 Write-Host "   [-] Removing Registry Key: $($app.RegPath)" -ForegroundColor Red
+                 try {
+                     Remove-Item -Path $app.RegPath -Recurse -Force -ErrorAction Stop
+                     Write-Host "       Registry entry removed." -ForegroundColor Green
+                     Start-Sleep -Seconds 1
+                 } catch {
+                     Write-Host "       [!] Failed to remove registry key: $($_.Exception.Message)" -ForegroundColor Red
+                     Start-Sleep -Seconds 2
+                 }
+            }
         }
     }
 }
