@@ -87,6 +87,7 @@ function Get-InstalledSoftware {
                      UninstallString = $cmd
                      QuietUninstallString = $quietCmd
                      RegPath = $item.PSPath
+                     RegistryKeyName = $item.PSChildName
                  }
                  [void]$list.Add($obj)
              }
@@ -274,10 +275,8 @@ function Invoke-UninstallSoftware {
         
         for ($i = 0; $i -lt $foundSoftware.Count; $i++) {
             Write-Host " [$($i+1)] $($foundSoftware[$i].DisplayName)" -ForegroundColor White
+            Write-Host "       ID: $($foundSoftware[$i].RegistryKeyName)" -ForegroundColor DarkGray
             Write-Host "       UninstallString: $($foundSoftware[$i].UninstallString)" -ForegroundColor DarkGray
-            if (-not [string]::IsNullOrWhiteSpace($foundSoftware[$i].QuietUninstallString)) {
-                Write-Host "       QuietUninstallString: $($foundSoftware[$i].QuietUninstallString)" -ForegroundColor DarkGray
-            }
         }
         
         Write-Host ""
@@ -305,43 +304,44 @@ function Invoke-UninstallSoftware {
                     
                     $rawCmd = $app.UninstallString
                     $quietCmd = $app.QuietUninstallString
+                    $keyName = $app.RegistryKeyName
                     
                     # Log Details for Debugging
                     Write-Host "`n[$count/$total] $($app.DisplayName)" -ForegroundColor Yellow
-                    Write-Host "   Path: $($app.RegPath)" -ForegroundColor DarkGray
-                    Write-Host "   UninstallString: $($rawCmd)" -ForegroundColor DarkGray
-                    if (-not [string]::IsNullOrWhiteSpace($quietCmd)) {
-                        Write-Host "   QuietString:     $($quietCmd)" -ForegroundColor DarkGray
-                    }
+                    Write-Host "   Key: $keyName" -ForegroundColor DarkGray
+                    Write-Host "   Original: $rawCmd" -ForegroundColor DarkGray
                     
-                    if ([string]::IsNullOrWhiteSpace($rawCmd)) {
-                         Write-Host "   [!] Skipping: Uninstall string is empty." -ForegroundColor Red
-                         continue
+                    # STRATEGY 1: GUID Override (The "New Approach")
+                    # If the Registry Key Name is a GUID (e.g., {A1B2...}), it is an MSI product.
+                    # We can FORCE standard MSI uninstall, ignoring the vendor's potentially broken string.
+                    if ($keyName -match "^\{[a-fA-F0-9-]+\}$") {
+                         Write-Host "   [i] MSI Product ID detected ($keyName)." -ForegroundColor Cyan
+                         Write-Host "   [i] Forcing standard Windows Installer removal..." -ForegroundColor Cyan
+                         # /x = Uninstall, /qb = Basic UI (shows progress but no wizard steps)
+                         $finalCmd = "msiexec.exe /x $keyName /qb"
                     }
-
-                    # STRATEGY: Prefer QuietUninstallString if available.
-                    # We strip the "quiet" flags to make it interactive.
-                    if (-not [string]::IsNullOrWhiteSpace($quietCmd)) {
-                        Write-Host "   [i] Quiet Uninstall String found. Adapting for interactive mode..." -ForegroundColor Cyan
-                        $finalCmd = $quietCmd -replace "(?i)\s*/qn", "" `
-                                              -replace "(?i)\s*/quiet", "" `
-                                              -replace "(?i)\s*/norestart", "" `
-                                              -replace "(?i)\s*/silent", "" `
-                                              -replace "(?i)\s*/s\b", "" 
-                    } else {
-                        $finalCmd = $rawCmd
-                    }
-
-                    # FIX: Some MSI commands use /I (Install/Configure) instead of /X (Uninstall).
-                    if ($finalCmd -match "(?i)msiexec.*\/I\s*\{") {
-                         Write-Host "   [!] Detected MSI Install flag (/I). Swapping to Uninstall flag (/X)..." -ForegroundColor Magenta
-                         $finalCmd = $finalCmd -replace "(?i)\/I", "/X"
-                    }
-                    
-                    # FIX: If command is just "setup.exe" with no arguments, it often reinstalls.
-                    if ($finalCmd -match '^"?.*\.exe"?$') {
-                        Write-Host "   [!] Detected bare executable. Appending /uninstall..." -ForegroundColor Magenta
-                        $finalCmd = "$finalCmd /uninstall"
+                    else {
+                        # STRATEGY 2: Fallback to parsed strings
+                        if (-not [string]::IsNullOrWhiteSpace($quietCmd)) {
+                            Write-Host "   [i] Quiet Uninstall String found. Adapting..." -ForegroundColor Cyan
+                            $finalCmd = $quietCmd -replace "(?i)\s*/qn", "" `
+                                                  -replace "(?i)\s*/quiet", "" `
+                                                  -replace "(?i)\s*/norestart", "" `
+                                                  -replace "(?i)\s*/silent", "" `
+                                                  -replace "(?i)\s*/s\b", "" 
+                        } else {
+                            $finalCmd = $rawCmd
+                        }
+                        
+                        # Apply MSI Fixes to string path
+                        if ($finalCmd -match "(?i)msiexec.*\/I\s*\{") {
+                             Write-Host "   [!] Detected MSI Install flag (/I). Swapping to Uninstall flag (/X)..." -ForegroundColor Magenta
+                             $finalCmd = $finalCmd -replace "(?i)\/I", "/X"
+                        }
+                        # Apply Bare Exe Fix
+                        if ($finalCmd -match '^"?.*\.exe"?$') {
+                             $finalCmd = "$finalCmd /uninstall"
+                        }
                     }
 
                     Write-Host "   Executing: $($finalCmd)" -ForegroundColor Cyan
