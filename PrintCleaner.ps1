@@ -273,12 +273,11 @@ function Invoke-UninstallSoftware {
         Write-Host ""
         
         for ($i = 0; $i -lt $foundSoftware.Count; $i++) {
-            # DISPLAY COMMAND IN MENU FOR DEBUGGING
-            $truncCmd = $foundSoftware[$i].UninstallString
-            if ($truncCmd.Length -gt 50) { $truncCmd = $truncCmd.Substring(0, 47) + "..." }
-            
             Write-Host " [$($i+1)] $($foundSoftware[$i].DisplayName)" -ForegroundColor White
-            Write-Host "       Cmd: $truncCmd" -ForegroundColor DarkGray
+            Write-Host "       UninstallString: $($foundSoftware[$i].UninstallString)" -ForegroundColor DarkGray
+            if (-not [string]::IsNullOrWhiteSpace($foundSoftware[$i].QuietUninstallString)) {
+                Write-Host "       QuietUninstallString: $($foundSoftware[$i].QuietUninstallString)" -ForegroundColor DarkGray
+            }
         }
         
         Write-Host ""
@@ -310,9 +309,9 @@ function Invoke-UninstallSoftware {
                     # Log Details for Debugging
                     Write-Host "`n[$count/$total] $($app.DisplayName)" -ForegroundColor Yellow
                     Write-Host "   Path: $($app.RegPath)" -ForegroundColor DarkGray
-                    Write-Host "   UninstallString: $rawCmd" -ForegroundColor DarkGray
+                    Write-Host "   UninstallString: $($rawCmd)" -ForegroundColor DarkGray
                     if (-not [string]::IsNullOrWhiteSpace($quietCmd)) {
-                        Write-Host "   QuietString:     $quietCmd" -ForegroundColor DarkGray
+                        Write-Host "   QuietString:     $($quietCmd)" -ForegroundColor DarkGray
                     }
                     
                     if ([string]::IsNullOrWhiteSpace($rawCmd)) {
@@ -324,7 +323,7 @@ function Invoke-UninstallSoftware {
                     # But if standard fails, we see it now.
                     $finalCmd = "$rawCmd"
 
-                    Write-Host "   Executing: $finalCmd" -ForegroundColor Cyan
+                    Write-Host "   Executing: $($finalCmd)" -ForegroundColor Cyan
                     
                     try {
                         # Use WindowStyle Normal so the user can see the uninstaller
