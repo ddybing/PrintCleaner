@@ -6,6 +6,7 @@
     This script provides a text-based interface to:
     1. Remove all printers and drivers (preserving Microsoft defaults).
     2. Clear the Windows Print Spooler queue.
+    3. Uninstall bundled printer software.
     Requires Administrator privileges.
 
 .NOTES
@@ -15,9 +16,10 @@
 #>
 
 # --- Configuration ---
-$Host.UI.RawUI.WindowTitle = "PrintCleaner"
+$AppVersion = "0.0.0" # Replaced by build script
+$Host.UI.RawUI.WindowTitle = "PrintCleaner v$AppVersion"
 $global:running = $true
-$menuOptions = @("List Installed Printers", "Clean Print Queue", "Remove All Printers & Drivers", "Exit")
+$menuOptions = @("List Installed Printers", "Clean Print Queue", "Remove All Printers & Drivers", "Uninstall Printer Software", "Exit")
 $selectionIndex = 0
 
 # --- Helper Functions ---
@@ -35,7 +37,7 @@ function Show-Header {
     Write-Host " | |_) | '__| | '_ \| __| |   | |/ _ \/ _' | '_ \ / _ \ '__|" -ForegroundColor Cyan
     Write-Host " |  __/| |  | | | | | |_| |___| |  __/ (_| | | | |  __/ |   " -ForegroundColor Cyan
     Write-Host " |_|   |_|  |_|_| |_|\__|\____|_|\___|\__,_|_| |_|\___|_|   " -ForegroundColor Cyan
-    Write-Host "                                                            " -ForegroundColor Cyan
+    Write-Host "                                              v$AppVersion          " -ForegroundColor DarkGray
     Write-Host "Use UP/DOWN arrows to navigate, ENTER to select." -ForegroundColor Gray
     Write-Host ""
 }
@@ -60,6 +62,34 @@ function Wait-Key {
         $key = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
         if ($key.VirtualKeyCode -eq 13) { break }
     }
+}
+
+function Get-InstalledSoftware {
+    $paths = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    )
+    
+    # Use array subexpression to safely collect output objects. 
+    # This avoids the "Hash table" addition error because we aren't using += on potentially mixed types.
+    $list = @(foreach ($path in $paths) {
+        $items = Get-ItemProperty $path -ErrorAction SilentlyContinue 
+        foreach ($item in $items) {
+             # FORCE STRING CONVERSION IMMEDIATELY
+             $name = [string]$item.DisplayName
+             $cmd = [string]$item.UninstallString
+             
+             if (-not [string]::IsNullOrWhiteSpace($name) -and -not [string]::IsNullOrWhiteSpace($cmd)) {
+                 # Output object to pipeline (collected by @())
+                 [PSCustomObject]@{
+                     DisplayName = $name
+                     UninstallString = $cmd
+                 }
+             }
+        }
+    })
+    
+    return $list
 }
 
 # --- Action Functions ---
@@ -198,6 +228,136 @@ function Invoke-RemovePrinters {
     Wait-Key
 }
 
+function Invoke-UninstallSoftware {
+    Show-Header
+    Write-Host "SEARCHING FOR PRINTER SOFTWARE..." -ForegroundColor Yellow
+    Write-Host "Scanning registry for common printer brands..." -ForegroundColor DarkGray
+
+    # Common printer brands/keywords
+    $brands = @("HP", "Hewlett-Packard", "Canon", "Epson", "Brother", "Xerox", "Kyocera", "Ricoh", "Lexmark", "Konica", "Samsung", "Oki", "Zebra", "Dymo", "Dell")
+    
+    $allSoftware = Get-InstalledSoftware
+    
+    # Simple array, no ArrayList to avoid potential type issues
+    $matches = @()
+
+    # Filter software list
+    foreach ($sw in $allSoftware) {
+        foreach ($brand in $brands) {
+            if ($sw.DisplayName -match "(?i)\b$brand\b") { # Case insensitive regex match
+                $matches += $sw
+                break
+            }
+        }
+    }
+    
+    if ($matches.Count -eq 0) {
+        Write-Host "`nNo printer-related software found." -ForegroundColor Green
+        Wait-Key
+        return
+    }
+
+    # Selection Loop
+    while ($true) {
+        Show-Header
+        Write-Host "FOUND PRINTER SOFTWARE" -ForegroundColor Cyan
+        Write-Host "----------------------" -ForegroundColor Cyan
+        Write-Host "The following software matched printer keywords."
+        Write-Host "Select an item to launch its uninstaller." -ForegroundColor DarkGray
+        Write-Host ""
+        
+        for ($i = 0; $i -lt $matches.Count; $i++) {
+            # DISPLAY COMMAND IN MENU FOR DEBUGGING
+            $truncCmd = $matches[$i].UninstallString
+            if ($truncCmd.Length -gt 50) { $truncCmd = $truncCmd.Substring(0, 47) + "..." }
+            
+            Write-Host " [$($i+1)] $($matches[$i].DisplayName)" -ForegroundColor White
+            Write-Host "       Cmd: $truncCmd" -ForegroundColor DarkGray
+        }
+        
+        Write-Host ""
+        Write-Host " [A] Uninstall ALL Listed Software (Auto-Silent)" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "Enter selection (or 'q' to return): " -NoNewline -ForegroundColor Yellow
+        $input = Read-Host
+        
+        if ($input -eq 'q') {
+            return
+        }
+        
+        if ($input -match '^[Aa]$') {
+            Write-Host "`nWARNING: This will attempt to silently uninstall ALL listed software." -ForegroundColor Red
+            Write-Host "Are you sure? (Y/N): " -NoNewline -ForegroundColor Yellow
+            $confirm = Read-Host
+            if ($confirm -match '^[Yy]$') {
+                $count = 0
+                $total = $matches.Count
+                
+                foreach ($app in $matches) {
+                    $count++
+                    $percent = [int](($count / $total) * 100)
+                    Write-Progress -Activity "Uninstalling Software" -Status "Removing: $($app.DisplayName)" -PercentComplete $percent
+                    
+                    $rawCmd = $app.UninstallString
+                    
+                    if ([string]::IsNullOrWhiteSpace($rawCmd)) {
+                         Write-Host "   [!] Skipping: Uninstall string is empty." -ForegroundColor DarkGray
+                         continue
+                    }
+                    $finalCmd = "$rawCmd"
+
+                    # Add silent flags
+                    if ($rawCmd -match "msiexec") {
+                        if ($rawCmd -notmatch "/qn" -and $rawCmd -notmatch "/quiet") {
+                            $finalCmd = "$finalCmd /qn /norestart"
+                        }
+                    } elseif ($rawCmd -match "uninstall.exe" -or $rawCmd -match "setup.exe") {
+                        if ($rawCmd -notmatch "/S" -and $rawCmd -notmatch "/silent") {
+                             $finalCmd = "$finalCmd /S /silent /quiet /norestart"
+                        }
+                    }
+                    
+                    Write-Host "[$count/$total] $($app.DisplayName)" -ForegroundColor Yellow
+                    Write-Host "   Cmd: $finalCmd" -ForegroundColor DarkGray
+                    
+                    try {
+                        Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "$finalCmd" -Wait -WindowStyle Hidden
+                    } catch {
+                         Write-Host "   [!] Error launching: $($_.Exception.Message)" -ForegroundColor Red
+                    }
+                    Start-Sleep -Seconds 1
+                }
+                Write-Progress -Activity "Uninstalling Software" -Completed
+                Write-Host "`nDone processing list." -ForegroundColor Green
+                Wait-Key
+                return
+            }
+        }
+        elseif ($input -match '^\d+$' -and [int]$input -le $matches.Count -and [int]$input -gt 0) {
+            $idx = [int]$input - 1
+            $app = $matches[$idx]
+            
+            Write-Host "Launching uninstaller for: $($app.DisplayName)..." -ForegroundColor Yellow
+            $cmdToRun = $app.UninstallString
+            if ([string]::IsNullOrWhiteSpace($cmdToRun)) {
+                 Write-Host "[ERROR] Uninstall string is empty. (Debug: '$cmdToRun')" -ForegroundColor Red
+                 Start-Sleep -Seconds 2
+                 continue
+            }
+            
+            Write-Host "Cmd: $cmdToRun" -ForegroundColor DarkGray
+            
+            try {
+                 Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "$cmdToRun" -PassThru
+                 Start-Sleep -Seconds 2
+            } catch {
+                Write-Host "Error launching uninstaller: $($_.Exception.Message)" -ForegroundColor Red
+                Start-Sleep -Seconds 2
+            }
+        }
+    }
+}
+
 # --- Main Loop ---
 
 if (-not (Test-Administrator)) {
@@ -231,7 +391,8 @@ while ($global:running) {
                 0 { Invoke-ListPrinters }
                 1 { Invoke-CleanQueue }
                 2 { Invoke-RemovePrinters }
-                3 { $global:running = $false }
+                3 { Invoke-UninstallSoftware }
+                4 { $global:running = $false }
             }
         }
         27 { # Escape
