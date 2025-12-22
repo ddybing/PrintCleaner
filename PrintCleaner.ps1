@@ -279,7 +279,7 @@ function Invoke-UninstallSoftware {
         }
         
         Write-Host ""
-        Write-Host " [A] Uninstall ALL Listed Software (Auto-Silent)" -ForegroundColor Yellow
+        Write-Host " [A] Uninstall ALL Listed Software (Interactive)" -ForegroundColor Yellow
         Write-Host ""
         Write-Host "Enter selection (or 'q' to return): " -NoNewline -ForegroundColor Yellow
         $input = Read-Host
@@ -289,7 +289,7 @@ function Invoke-UninstallSoftware {
         }
         
         if ($input -match '^[Aa]$') {
-            Write-Host "`nWARNING: This will attempt to silently uninstall ALL listed software." -ForegroundColor Red
+            Write-Host "`nWARNING: This will run uninstallers one by one. You may need to click 'Next/Uninstall'." -ForegroundColor Red
             Write-Host "Are you sure? (Y/N): " -NoNewline -ForegroundColor Yellow
             $confirm = Read-Host
             if ($confirm -match '^[Yy]$') {
@@ -299,7 +299,7 @@ function Invoke-UninstallSoftware {
                 foreach ($app in $foundSoftware) {
                     $count++
                     $percent = [int](($count / $total) * 100)
-                    Write-Progress -Activity "Uninstalling Software" -Status "Removing: $($app.DisplayName)" -PercentComplete $percent
+                    Write-Progress -Activity "Uninstalling Software" -Status "Processing: $($app.DisplayName)" -PercentComplete $percent
                     
                     $rawCmd = $app.UninstallString
                     
@@ -307,24 +307,16 @@ function Invoke-UninstallSoftware {
                          Write-Host "   [!] Skipping: Uninstall string is empty." -ForegroundColor DarkGray
                          continue
                     }
+                    
+                    # RUN INTERACTIVELY (No silent flags added)
                     $finalCmd = "$rawCmd"
 
-                    # Add silent flags
-                    if ($rawCmd -match "msiexec") {
-                        if ($rawCmd -notmatch "/qn" -and $rawCmd -notmatch "/quiet") {
-                            $finalCmd = "$finalCmd /qn /norestart"
-                        }
-                    } elseif ($rawCmd -match "uninstall.exe" -or $rawCmd -match "setup.exe") {
-                        if ($rawCmd -notmatch "/S" -and $rawCmd -notmatch "/silent") {
-                             $finalCmd = "$finalCmd /S /silent /quiet /norestart"
-                        }
-                    }
-                    
                     Write-Host "[$count/$total] $($app.DisplayName)" -ForegroundColor Yellow
                     Write-Host "   Cmd: $finalCmd" -ForegroundColor DarkGray
                     
                     try {
-                        Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "$finalCmd" -Wait -WindowStyle Hidden
+                        # Use WindowStyle Normal so the user can see the uninstaller
+                        Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "$finalCmd" -Wait -WindowStyle Normal
                     } catch {
                          Write-Host "   [!] Error launching: $($_.Exception.Message)" -ForegroundColor Red
                     }
