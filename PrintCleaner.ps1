@@ -365,22 +365,57 @@ function Invoke-UninstallSoftware {
             $app = $foundSoftware[$idx]
             
             Write-Host "Launching uninstaller for: $($app.DisplayName)..." -ForegroundColor Yellow
-            $cmdToRun = $app.UninstallString
-            if ([string]::IsNullOrWhiteSpace($cmdToRun)) {
-                 Write-Host "[ERROR] Uninstall string is empty. (Debug: '$cmdToRun')" -ForegroundColor Red
+            
+            $rawCmd = $app.UninstallString
+            $quietCmd = $app.QuietUninstallString
+            $keyName = $app.RegistryKeyName
+            $finalCmd = ""
+
+            # STRATEGY 1: GUID Override
+            if ($keyName -match "^\{[a-fA-F0-9-]+\}$") {
+                 Write-Host "   [i] MSI Product ID detected ($keyName)." -ForegroundColor Cyan
+                 Write-Host "   [i] Forcing standard Windows Installer removal..." -ForegroundColor Cyan
+                 $finalCmd = "msiexec.exe /x $keyName /qb"
+            }
+            else {
+                # STRATEGY 2: Fallback to parsed strings
+                if (-not [string]::IsNullOrWhiteSpace($quietCmd)) {
+                    Write-Host "   [i] Quiet Uninstall String found. Adapting..." -ForegroundColor Cyan
+                    $finalCmd = $quietCmd -replace "(?i)\s*/qn", "" `
+                                          -replace "(?i)\s*/quiet", "" `
+                                          -replace "(?i)\s*/norestart", "" `
+                                          -replace "(?i)\s*/silent", "" `
+                                          -replace "(?i)\s*/s\b", "" 
+                } else {
+                    $finalCmd = $rawCmd
+                }
+                
+                # Apply MSI Fixes
+                if ($finalCmd -match "(?i)msiexec.*\/I\s*\{") {
+                     Write-Host "   [!] Detected MSI Install flag (/I). Swapping to Uninstall flag (/X)..." -ForegroundColor Magenta
+                     $finalCmd = $finalCmd -replace "(?i)\/I", "/X"
+                }
+                # Apply Bare Exe Fix
+                if ($finalCmd -match '^"?.*\.exe"?$') {
+                     $finalCmd = "$finalCmd /uninstall"
+                }
+            }
+            
+            if ([string]::IsNullOrWhiteSpace($finalCmd)) {
+                 Write-Host "[ERROR] Uninstall string is empty." -ForegroundColor Red
                  Start-Sleep -Seconds 2
                  continue
             }
             
-            Write-Host "Cmd: $cmdToRun" -ForegroundColor DarkGray
+            Write-Host "Cmd: $finalCmd" -ForegroundColor DarkGray
             
             try {
-                 Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "$cmdToRun" -PassThru
-                 Start-Sleep -Seconds 2
+                 Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "$finalCmd" -Wait -WindowStyle Normal
             } catch {
                 Write-Host "Error launching uninstaller: $($_.Exception.Message)" -ForegroundColor Red
-                Start-Sleep -Seconds 2
             }
+            Write-Host "Done." -ForegroundColor Green
+            Start-Sleep -Seconds 2
         }
     }
 }
