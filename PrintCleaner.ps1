@@ -241,6 +241,13 @@ function Invoke-UninstallSoftware {
     # Common printer brands/keywords
     $brands = @("HP", "Hewlett-Packard", "Canon", "Epson", "Brother", "Xerox", "Kyocera", "Ricoh", "Lexmark", "Konica", "Samsung", "Oki", "Zebra", "Dymo", "Dell")
     
+    # Internal Registry of Known Printer App GUIDs (for apps not detected by name)
+    # Format: "{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}"
+    $knownGuids = @(
+        # Add your GUIDs here, e.g.:
+        # "{12345678-1234-1234-1234-1234567890AB}" 
+    )
+
     $allSoftware = Get-InstalledSoftware
     
     # Use ArrayList to avoid type issues
@@ -249,12 +256,26 @@ function Invoke-UninstallSoftware {
 
     # Filter software list
     foreach ($sw in $allSoftware) {
+        $isMatch = $false
+
+        # Check 1: Brand Keywords
         foreach ($brand in $brands) {
-            if ($sw.DisplayName -match "(?i)\b$brand\b") { # Case insensitive regex match
-                # This -match operator was overwriting the old $matches variable!
-                [void]$foundSoftware.Add($sw)
+            if ($sw.DisplayName -match "(?i)\b$brand\b") { 
+                $isMatch = $true
                 break
             }
+        }
+
+        # Check 2: Known GUIDs
+        if (-not $isMatch) {
+            if ($knownGuids -contains $sw.RegistryKeyName) {
+                $isMatch = $true
+                Write-Host "   [+] Found by GUID: $($sw.DisplayName)" -ForegroundColor Cyan
+            }
+        }
+
+        if ($isMatch) {
+            [void]$foundSoftware.Add($sw)
         }
     }
     
