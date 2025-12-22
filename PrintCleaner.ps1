@@ -240,19 +240,21 @@ function Invoke-UninstallSoftware {
     $allSoftware = Get-InstalledSoftware
     
     # Use ArrayList to avoid type issues
-    $matches = New-Object System.Collections.ArrayList
+    # RENAMED from $matches to $foundSoftware because $matches is RESERVED by PowerShell regex
+    $foundSoftware = New-Object System.Collections.ArrayList
 
     # Filter software list
     foreach ($sw in $allSoftware) {
         foreach ($brand in $brands) {
             if ($sw.DisplayName -match "(?i)\b$brand\b") { # Case insensitive regex match
-                [void]$matches.Add($sw)
+                # This -match operator was overwriting the old $matches variable!
+                [void]$foundSoftware.Add($sw)
                 break
             }
         }
     }
     
-    if ($matches.Count -eq 0) {
+    if ($foundSoftware.Count -eq 0) {
         Write-Host "`nNo printer-related software found." -ForegroundColor Green
         Wait-Key
         return
@@ -267,12 +269,12 @@ function Invoke-UninstallSoftware {
         Write-Host "Select an item to launch its uninstaller." -ForegroundColor DarkGray
         Write-Host ""
         
-        for ($i = 0; $i -lt $matches.Count; $i++) {
+        for ($i = 0; $i -lt $foundSoftware.Count; $i++) {
             # DISPLAY COMMAND IN MENU FOR DEBUGGING
-            $truncCmd = $matches[$i].UninstallString
+            $truncCmd = $foundSoftware[$i].UninstallString
             if ($truncCmd.Length -gt 50) { $truncCmd = $truncCmd.Substring(0, 47) + "..." }
             
-            Write-Host " [$($i+1)] $($matches[$i].DisplayName)" -ForegroundColor White
+            Write-Host " [$($i+1)] $($foundSoftware[$i].DisplayName)" -ForegroundColor White
             Write-Host "       Cmd: $truncCmd" -ForegroundColor DarkGray
         }
         
@@ -292,9 +294,9 @@ function Invoke-UninstallSoftware {
             $confirm = Read-Host
             if ($confirm -match '^[Yy]$') {
                 $count = 0
-                $total = $matches.Count
+                $total = $foundSoftware.Count
                 
-                foreach ($app in $matches) {
+                foreach ($app in $foundSoftware) {
                     $count++
                     $percent = [int](($count / $total) * 100)
                     Write-Progress -Activity "Uninstalling Software" -Status "Removing: $($app.DisplayName)" -PercentComplete $percent
@@ -334,9 +336,9 @@ function Invoke-UninstallSoftware {
                 return
             }
         }
-        elseif ($input -match '^\d+$' -and [int]$input -le $matches.Count -and [int]$input -gt 0) {
+        elseif ($input -match '^\d+$' -and [int]$input -le $foundSoftware.Count -and [int]$input -gt 0) {
             $idx = [int]$input - 1
-            $app = $matches[$idx]
+            $app = $foundSoftware[$idx]
             
             Write-Host "Launching uninstaller for: $($app.DisplayName)..." -ForegroundColor Yellow
             $cmdToRun = $app.UninstallString
