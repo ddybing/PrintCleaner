@@ -79,11 +79,14 @@ function Get-InstalledSoftware {
              # FORCE STRING CONVERSION IMMEDIATELY
              $name = [string]$item.DisplayName
              $cmd = [string]$item.UninstallString
+             $quietCmd = [string]$item.QuietUninstallString
              
-             if (-not [string]::IsNullOrWhiteSpace($name) -and -not [string]::IsNullOrWhiteSpace($cmd)) {
+             if (-not [string]::IsNullOrWhiteSpace($name) -and (-not [string]::IsNullOrWhiteSpace($cmd) -or -not [string]::IsNullOrWhiteSpace($quietCmd))) {
                  $obj = [PSCustomObject]@{
                      DisplayName = $name
                      UninstallString = $cmd
+                     QuietUninstallString = $quietCmd
+                     RegPath = $item.PSPath
                  }
                  [void]$list.Add($obj)
              }
@@ -302,17 +305,26 @@ function Invoke-UninstallSoftware {
                     Write-Progress -Activity "Uninstalling Software" -Status "Processing: $($app.DisplayName)" -PercentComplete $percent
                     
                     $rawCmd = $app.UninstallString
+                    $quietCmd = $app.QuietUninstallString
+                    
+                    # Log Details for Debugging
+                    Write-Host "`n[$count/$total] $($app.DisplayName)" -ForegroundColor Yellow
+                    Write-Host "   Path: $($app.RegPath)" -ForegroundColor DarkGray
+                    Write-Host "   UninstallString: $rawCmd" -ForegroundColor DarkGray
+                    if (-not [string]::IsNullOrWhiteSpace($quietCmd)) {
+                        Write-Host "   QuietString:     $quietCmd" -ForegroundColor DarkGray
+                    }
                     
                     if ([string]::IsNullOrWhiteSpace($rawCmd)) {
-                         Write-Host "   [!] Skipping: Uninstall string is empty." -ForegroundColor DarkGray
+                         Write-Host "   [!] Skipping: Uninstall string is empty." -ForegroundColor Red
                          continue
                     }
                     
-                    # RUN INTERACTIVELY (No silent flags added)
+                    # Use Quiet String if available? No, user requested "Non Quietly" to debug. 
+                    # But if standard fails, we see it now.
                     $finalCmd = "$rawCmd"
 
-                    Write-Host "[$count/$total] $($app.DisplayName)" -ForegroundColor Yellow
-                    Write-Host "   Cmd: $finalCmd" -ForegroundColor DarkGray
+                    Write-Host "   Executing: $finalCmd" -ForegroundColor Cyan
                     
                     try {
                         # Use WindowStyle Normal so the user can see the uninstaller
