@@ -318,30 +318,43 @@ function Invoke-UninstallSoftware {
                          Write-Host "   [!] Skipping: Uninstall string is empty." -ForegroundColor Red
                          continue
                     }
+
+                    # STRATEGY: Prefer QuietUninstallString if available.
+                    # We strip the "quiet" flags to make it interactive.
+                    if (-not [string]::IsNullOrWhiteSpace($quietCmd)) {
+                        Write-Host "   [i] Quiet Uninstall String found. Adapting for interactive mode..." -ForegroundColor Cyan
+                        $finalCmd = $quietCmd -replace "(?i)\s*/qn", "" `
+                                              -replace "(?i)\s*/quiet", "" `
+                                              -replace "(?i)\s*/norestart", "" `
+                                              -replace "(?i)\s*/silent", "" `
+                                              -replace "(?i)\s*/s\b", "" 
+                    } else {
+                        $finalCmd = $rawCmd
+                    }
+
+                    # FIX: Some MSI commands use /I (Install/Configure) instead of /X (Uninstall).
+                    if ($finalCmd -match "(?i)msiexec.*\/I\s*\{") {
+                         Write-Host "   [!] Detected MSI Install flag (/I). Swapping to Uninstall flag (/X)..." -ForegroundColor Magenta
+                         $finalCmd = $finalCmd -replace "(?i)\/I", "/X"
+                    }
                     
-                                        # Use Quiet String if available? No, user requested "Non Quietly" to debug. 
-                                        # But if standard fails, we see it now.
-                                        $finalCmd = "$rawCmd"
+                    # FIX: If command is just "setup.exe" with no arguments, it often reinstalls.
+                    if ($finalCmd -match '^"?.*\.exe"?$') {
+                        Write-Host "   [!] Detected bare executable. Appending /uninstall..." -ForegroundColor Magenta
+                        $finalCmd = "$finalCmd /uninstall"
+                    }
+
+                    Write-Host "   Executing: $($finalCmd)" -ForegroundColor Cyan
                     
-                                        # FIX: Some MSI commands use /I (Install/Configure) instead of /X (Uninstall).
-                                        # We force /X to ensure it triggers the removal process.
-                                        if ($finalCmd -match "(?i)msiexec.*\/I\s*{") {
-                                             Write-Host "   [!] Detected MSI Install flag (/I). Swapping to Uninstall flag (/X)..." -ForegroundColor Magenta
-                                             $finalCmd = $finalCmd -replace "(?i)\/I", "/X"
-                                        }
+                    try {
+                        Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "$finalCmd" -Wait -WindowStyle Normal
+                    } catch {
+                         Write-Host "   [!] Error launching: $($_.Exception.Message)" -ForegroundColor Red
+                    }
                     
-                                        Write-Host "   Executing: $($finalCmd)" -ForegroundColor Cyan
-                                        
-                                        try {
-                                            # Use WindowStyle Normal so the user can see the uninstaller
-                                            Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "$finalCmd" -Wait -WindowStyle Normal
-                                        } catch {
-                                             Write-Host "   [!] Error launching: $($_.Exception.Message)" -ForegroundColor Red
-                                        }
-                                        
-                                        Write-Host "   (Press ENTER to continue to next app...)" -ForegroundColor DarkGray
-                                        [void](Read-Host)
-                                    }
+                    Write-Host "   (Press ENTER to continue to next app...)" -ForegroundColor DarkGray
+                    [void](Read-Host)
+                }
                                     Write-Progress -Activity "Uninstalling Software" -Completed                Write-Host "`nDone processing list." -ForegroundColor Green
                 Wait-Key
                 return
