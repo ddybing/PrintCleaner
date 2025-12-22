@@ -70,9 +70,10 @@ function Get-InstalledSoftware {
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
     )
     
-    # Use array subexpression to safely collect output objects. 
-    # This avoids the "Hash table" addition error because we aren't using += on potentially mixed types.
-    $list = @(foreach ($path in $paths) {
+    # Use Generic List to avoid "Hashtable can only be added to another" errors
+    $list = New-Object System.Collections.Generic.List[PSObject]
+
+    foreach ($path in $paths) {
         $items = Get-ItemProperty $path -ErrorAction SilentlyContinue 
         foreach ($item in $items) {
              # FORCE STRING CONVERSION IMMEDIATELY
@@ -80,14 +81,14 @@ function Get-InstalledSoftware {
              $cmd = [string]$item.UninstallString
              
              if (-not [string]::IsNullOrWhiteSpace($name) -and -not [string]::IsNullOrWhiteSpace($cmd)) {
-                 # Output object to pipeline (collected by @())
-                 [PSCustomObject]@{
+                 $obj = [PSCustomObject]@{
                      DisplayName = $name
                      UninstallString = $cmd
                  }
+                 $list.Add($obj)
              }
         }
-    })
+    }
     
     return $list
 }
@@ -147,8 +148,8 @@ function Invoke-RemovePrinters {
 
     Write-Host "`nStarting Cleanup..." -ForegroundColor Yellow
     
-    $removedPrinters = @()
-    $removedDrivers = @()
+    $removedPrinters = New-Object System.Collections.Generic.List[string]
+    $removedDrivers = New-Object System.Collections.Generic.List[string]
 
     # 1. Remove Printers
     try {
@@ -163,7 +164,7 @@ function Invoke-RemovePrinters {
                 Write-Host "[-] Removing Printer: $($p.Name)"
                 try {
                     Remove-Printer -Name $p.Name -ErrorAction Stop
-                    $removedPrinters += $p.Name
+                    $removedPrinters.Add($p.Name)
                 } catch {
                     Write-Host "    [!] Failed to remove $($p.Name): $($_.Exception.Message)" -ForegroundColor Red
                 }
@@ -190,7 +191,7 @@ function Invoke-RemovePrinters {
                 Write-Host "[-] Removing Driver: $($d.Name)"
                 try {
                     Remove-PrinterDriver -Name $d.Name -ErrorAction Stop
-                    $removedDrivers += $d.Name
+                    $removedDrivers.Add($d.Name)
                 } catch {
                     Write-Host "    [!] Locked or in use (skipping): $($d.Name)" -ForegroundColor DarkGray
                 }
@@ -238,14 +239,14 @@ function Invoke-UninstallSoftware {
     
     $allSoftware = Get-InstalledSoftware
     
-    # Simple array, no ArrayList to avoid potential type issues
-    $matches = @()
+    # Use Generic List to avoid type issues
+    $matches = New-Object System.Collections.Generic.List[PSObject]
 
     # Filter software list
     foreach ($sw in $allSoftware) {
         foreach ($brand in $brands) {
             if ($sw.DisplayName -match "(?i)\b$brand\b") { # Case insensitive regex match
-                $matches += $sw
+                $matches.Add($sw)
                 break
             }
         }
