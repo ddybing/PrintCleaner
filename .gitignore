@@ -1,0 +1,19 @@
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+*.syso
+
+# Temporary Files
+*.tmp
+*.log
+PrintCleaner_Temp.ps1
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
