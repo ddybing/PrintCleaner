@@ -319,22 +319,30 @@ function Invoke-UninstallSoftware {
                          continue
                     }
                     
-                    # Use Quiet String if available? No, user requested "Non Quietly" to debug. 
-                    # But if standard fails, we see it now.
-                    $finalCmd = "$rawCmd"
-
-                    Write-Host "   Executing: $($finalCmd)" -ForegroundColor Cyan
+                                        # Use Quiet String if available? No, user requested "Non Quietly" to debug. 
+                                        # But if standard fails, we see it now.
+                                        $finalCmd = "$rawCmd"
                     
-                    try {
-                        # Use WindowStyle Normal so the user can see the uninstaller
-                        Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "$finalCmd" -Wait -WindowStyle Normal
-                    } catch {
-                         Write-Host "   [!] Error launching: $($_.Exception.Message)" -ForegroundColor Red
-                    }
-                    Start-Sleep -Seconds 1
-                }
-                Write-Progress -Activity "Uninstalling Software" -Completed
-                Write-Host "`nDone processing list." -ForegroundColor Green
+                                        # FIX: Some MSI commands use /I (Install/Configure) instead of /X (Uninstall).
+                                        # We force /X to ensure it triggers the removal process.
+                                        if ($finalCmd -match "(?i)msiexec.*\/I\s*{") {
+                                             Write-Host "   [!] Detected MSI Install flag (/I). Swapping to Uninstall flag (/X)..." -ForegroundColor Magenta
+                                             $finalCmd = $finalCmd -replace "(?i)\/I", "/X"
+                                        }
+                    
+                                        Write-Host "   Executing: $($finalCmd)" -ForegroundColor Cyan
+                                        
+                                        try {
+                                            # Use WindowStyle Normal so the user can see the uninstaller
+                                            Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "$finalCmd" -Wait -WindowStyle Normal
+                                        } catch {
+                                             Write-Host "   [!] Error launching: $($_.Exception.Message)" -ForegroundColor Red
+                                        }
+                                        
+                                        Write-Host "   (Press ENTER to continue to next app...)" -ForegroundColor DarkGray
+                                        [void](Read-Host)
+                                    }
+                                    Write-Progress -Activity "Uninstalling Software" -Completed                Write-Host "`nDone processing list." -ForegroundColor Green
                 Wait-Key
                 return
             }
