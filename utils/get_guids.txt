@@ -1,0 +1,13 @@
+# PowerShell command to list installed software and their Registry Key Names (often GUIDs).
+# Run this command in a PowerShell window on your Windows machine.
+#
+# To filter the results, you can use the 'Filter' parameter, e.g., Filter "HP"
+#
+# Example:
+#   To get all software:
+#     Get-ChildItem -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall, HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall | Get-ItemProperty | Select-Object DisplayName, PSChildName | Sort-Object DisplayName | Out-GridView
+#
+#   To filter by a keyword (e.g., "Printer"):
+#     Get-ChildItem -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall, HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall | Get-ItemProperty | Where-Object { $_.DisplayName -match "Printer" } | Select-Object DisplayName, PSChildName | Sort-Object DisplayName | Out-GridView
+#
+Get-ChildItem -Path HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall, HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall | Get-ItemProperty | Select-Object DisplayName, PSChildName | Sort-Object DisplayName | Out-GridView
