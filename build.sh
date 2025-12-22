@@ -40,3 +40,25 @@ mv PrintCleaner.ps1.bak PrintCleaner.ps1
 echo "---------------------------------------"
 echo "Successfully built: $output_name"
 echo "---------------------------------------"
+
+# 7. Git Release Integration
+echo "Release Management"
+echo "------------------"
+read -p "Do you want to commit this version and trigger a GitHub Release for v$new_ver? (y/N) " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "Committing version bump..."
+    git add VERSION PrintCleaner.manifest
+    git commit -m "chore: release v$new_ver"
+    
+    echo "Tagging v$new_ver..."
+    git tag "v$new_ver"
+    
+    echo "Pushing changes and tag..."
+    git push origin main
+    git push origin "v$new_ver"
+    
+    echo "---------------------------------------"
+    echo "GitHub Action triggered for v$new_ver!"
+    echo "Check status at: https://github.com/$(git config --get remote.origin.url | sed 's/.*github.com[:\/]\(.*\).git/\1/')/actions"
+fi
