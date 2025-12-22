@@ -244,8 +244,8 @@ function Invoke-UninstallSoftware {
     # Internal Registry of Known Printer App GUIDs (for apps not detected by name)
     # Format: "{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}"
     $knownGuids = @(
-        # Add your GUIDs here, e.g.:
-        # "{12345678-1234-1234-1234-1234567890AB}" 
+        "{DB5EDF09-A7A7-47FA-B365-A7500A472878}", # EpsonNet Print
+        "{3361D415-BA35-4143-B301-661991BA6219}"  # MyEpson Portal 
     )
 
     $allSoftware = Get-InstalledSoftware
