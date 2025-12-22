@@ -376,7 +376,8 @@ function Invoke-UninstallSoftware {
                     Write-Host "   (Press ENTER to continue to next app...)" -ForegroundColor DarkGray
                     [void](Read-Host)
                 }
-                                    Write-Progress -Activity "Uninstalling Software" -Completed                Write-Host "`nDone processing list." -ForegroundColor Green
+                Write-Progress -Activity "Uninstalling Software" -Completed
+                Write-Host "`nDone processing list." -ForegroundColor Green
                 Wait-Key
                 return
             }
