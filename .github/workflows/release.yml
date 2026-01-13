@@ -56,10 +56,49 @@ jobs:
           echo "ARTIFACT_NAME=$output_name" >> $GITHUB_ENV
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: ${{ env.ARTIFACT_NAME }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Define Variables
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          API_URL="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases"
+          FILE_NAME="${{ env.ARTIFACT_NAME }}"
+          
+          echo "Creating release for $TAG_NAME on Gitea..."
+          
+          # 1. Create Release
+          RESPONSE=$(curl -s -X POST "$API_URL" \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"tag_name\": \"$TAG_NAME\",
+              \"name\": \"$TAG_NAME\",
+              \"body\": \"Automated release for $TAG_NAME\",
+              \"draft\": false,
+              \"prerelease\": false
+            }")
+          
+          # Extract Release ID (simple grep fallback)
+          RELEASE_ID=$(echo "$RESPONSE" | grep -o '"id": *[0-9]*' | head -1 | grep -o '[0-9]*')
+          
+          if [ -z "$RELEASE_ID" ]; then
+            echo "Error: Failed to create release. API Response:"
+            echo "$RESPONSE"
+            exit 1
+          fi
+          
+          echo "Release created with ID: $RELEASE_ID"
+          
+          # 2. Upload Asset
+          # Gitea API: POST /repos/{owner}/{repo}/releases/{id}/assets
+          UPLOAD_URL="${API_URL}/${RELEASE_ID}/assets"
+          
+          echo "Uploading artifact: $FILE_NAME to $UPLOAD_URL"
+          
+          curl -f -X POST "$UPLOAD_URL?name=$FILE_NAME" \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@$FILE_NAME"
+            
+          echo "Asset uploaded successfully."

@@ -3,7 +3,7 @@
   <assemblyIdentity
     type="win32"
     name="PrintCleaner.App"
-    version="1.0.34.0"
+    version="1.0.35.0"
     processorArchitecture="amd64"
   />
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
